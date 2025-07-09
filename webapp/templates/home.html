@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Image Caption Generator</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    :root {
+      --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      --accent-gradient: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+      --dark-bg: #0a0a0a;
+      --card-bg: rgba(255, 255, 255, 0.05);
+      --border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    body {
+      background: var(--dark-bg);
+      color: white;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      min-height: 100vh;
+    }
+
+    .upload-card {
+      background: var(--card-bg);
+      border: 2px dashed var(--border-color);
+      border-radius: 1rem;
+      backdrop-filter: blur(10px);
+      transition: 0.3s ease;
+    }
+
+    .upload-card.dragover {
+      border-color: #667eea;
+      transform: scale(1.02);
+    }
+
+    .file-input-button {
+      background: var(--primary-gradient);
+      border: none;
+      color: white;
+    }
+
+    .generate-btn {
+      background: var(--success-gradient);
+      border: none;
+      color: white;
+    }
+
+    .new-upload-btn {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      background: var(--accent-gradient);
+      border: none;
+      color: white;
+      z-index: 1000;
+    }
+
+    .animated-bg::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background:
+        radial-gradient(circle at 20% 30%, rgba(102, 126, 234, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 70%, rgba(245, 87, 108, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 40% 80%, rgba(118, 75, 162, 0.1) 0%, transparent 50%);
+      animation: float 20s ease-in-out infinite;
+      z-index: -1;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+  </style>
+</head>
+<body>
+  <div class="position-fixed top-0 start-0 w-100 h-100 animated-bg z-n1"></div>
+
+  <div class="container py-5">
+    <div class="text-center mb-4">
+      <h1 class="display-5 fw-bold" style="background: var(--primary-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">AI Image Caption Generator</h1>
+      <p class="text-muted">Upload an image and let AI generate a caption for you</p>
+    </div>
+
+    <div class="d-flex justify-content-center">
+      <div id="uploadCard" class="upload-card p-5 text-center w-100" style="max-width: 600px;">
+        <div class="fs-1 mb-3 text-muted">📸</div>
+        <h3>Drop your image here</h3>
+        <p class="text-muted">or click below to browse</p>
+
+        <form method="post" enctype="multipart/form-data">
+          {% csrf_token %}
+          <input type="file" id="fileInput" class="d-none" accept="image/*">
+          <button type="button" class="btn file-input-button px-4 py-2 rounded-pill fw-semibold mt-2">Choose Image</button>
+        </form>
+
+        <div id="previewArea" class="mt-4 d-none">
+          <img id="previewImage" class="img-fluid rounded mb-3" style="max-height: 300px;" alt="Preview">
+          <div id="fileInfo" class="bg-light bg-opacity-10 text-white p-3 rounded"></div>
+          <button id="generateBtn" class="btn generate-btn mt-3 px-4 py-2 rounded-pill fw-semibold">✨ Generate Caption</button>
+        </div>
+
+        <div id="loading" class="d-none mt-4 text-center">
+          <div class="spinner-border text-primary mb-3" role="status"></div>
+          <p class="text-secondary">Analyzing image...</p>
+        </div>
+
+        <div id="errorMessage" class="alert alert-danger d-none mt-3"></div>
+        <div id="successMessage" class="alert alert-success d-none mt-3"></div>
+
+        <div id="captionSection" class="d-none mt-4">
+          <div class="bg-light bg-opacity-10 text-white p-4 rounded">
+            <h4>✨ Generated Caption</h4>
+            <div id="captionText" class="text-center fw-medium mt-2 mb-3" style="background: var(--success-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></div>
+            <div class="d-flex flex-wrap justify-content-center gap-2">
+              <button class="btn btn-outline-light action-btn" onclick="copyCaption()">📋 Copy</button>
+              <button class="btn btn-outline-danger action-btn" onclick="generateAnother()">🔄 Try Again</button>
+              <button class="btn btn-outline-success action-btn" onclick="startOver()">🆕 New</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button id="newUploadBtn" class="btn new-upload-btn px-4 py-2 rounded-pill d-none">📸 New Image</button>
+
+  <script>
+    const uploadCard = document.getElementById('uploadCard');
+    const fileInput = document.getElementById('fileInput');
+    const previewArea = document.getElementById('previewArea');
+    const previewImage = document.getElementById('previewImage');
+    const fileInfo = document.getElementById('fileInfo');
+    const generateBtn = document.getElementById('generateBtn');
+    const loading = document.getElementById('loading');
+    const errorMessage = document.getElementById('errorMessage');
+    const successMessage = document.getElementById('successMessage');
+    const captionSection = document.getElementById('captionSection');
+    const captionText = document.getElementById('captionText');
+    const newUploadBtn = document.getElementById('newUploadBtn');
+
+    let currentFile = null;
+    let isProcessing = false;
+
+    document.querySelector('.file-input-button').addEventListener('click', e => {
+      e.preventDefault();
+      if (!isProcessing) fileInput.click();
+    });
+
+    uploadCard.addEventListener('dragover', e => {
+      e.preventDefault();
+      if (!isProcessing) uploadCard.classList.add('dragover');
+    });
+
+    uploadCard.addEventListener('dragleave', e => {
+      e.preventDefault();
+      uploadCard.classList.remove('dragover');
+    });
+
+    uploadCard.addEventListener('drop', e => {
+      e.preventDefault();
+      uploadCard.classList.remove('dragover');
+      if (!isProcessing && e.dataTransfer.files.length) {
+        handleFileSelect(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', e => {
+      if (!isProcessing && e.target.files.length) {
+        handleFileSelect(e.target.files[0]);
+      }
+    });
+
+    generateBtn.addEventListener('click', () => {
+      if (!isProcessing) generateCaption();
+    });
+
+    function handleFileSelect(file) {
+      if (!file.type.startsWith('image/')) return showError('Please select an image file.');
+      if (file.size > 10 * 1024 * 1024) return showError('File too large. Please choose an image under 10MB.');
+
+      currentFile = file;
+      hideMessages();
+      captionSection.classList.add('d-none');
+      newUploadBtn.classList.add('d-none');
+
+      const reader = new FileReader();
+      reader.onload = e => {
+        previewImage.src = e.target.result;
+        previewArea.classList.remove('d-none');
+        generateBtn.classList.remove('d-none');
+        fileInfo.innerHTML = `
+          <p><strong>Name:</strong> ${file.name}</p>
+          <p><strong>Size:</strong> ${(file.size / 1024 / 1024).toFixed(2)} MB</p>
+          <p><strong>Type:</strong> ${file.type}</p>`;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function generateCaption() {
+      if (!currentFile) return showError('Please select an image first.');
+      isProcessing = true;
+      loading.classList.remove('d-none');
+      generateBtn.classList.add('d-none');
+      captionSection.classList.add('d-none');
+      hideMessages();
+
+      const formData = new FormData();
+      formData.append('image', currentFile);
+      const csrfToken = getCookie('csrftoken');
+
+      fetch(window.location.href, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfToken },
+        body: formData
+      })
+      .then(res => res.json())
+      .then(data => {
+        isProcessing = false;
+        loading.classList.add('d-none');
+        if (data.success) {
+          captionText.textContent = data.caption;
+          captionSection.classList.remove('d-none');
+          newUploadBtn.classList.remove('d-none');
+          showSuccess('Caption generated successfully!');
+        } else {
+          showError(data.error || 'Failed to generate caption. Try again.');
+          generateBtn.classList.remove('d-none');
+        }
+      })
+      .catch(err => {
+        isProcessing = false;
+        loading.classList.add('d-none');
+        generateBtn.classList.remove('d-none');
+        showError('Network error. Please try again.');
+      });
+    }
+
+    function generateAnother() {
+      if (currentFile && !isProcessing) generateCaption();
+    }
+
+    function copyCaption() {
+      navigator.clipboard.writeText(captionText.textContent)
+        .then(() => showSuccess('Caption copied!'))
+        .catch(() => showError('Copy failed.'));
+    }
+
+    function startOver() {
+      currentFile = null;
+      isProcessing = false;
+      fileInput.value = '';
+      previewArea.classList.add('d-none');
+      captionSection.classList.add('d-none');
+      loading.classList.add('d-none');
+      generateBtn.classList.add('d-none');
+      newUploadBtn.classList.add('d-none');
+      previewImage.src = '';
+      fileInfo.innerHTML = '';
+      captionText.textContent = '';
+      hideMessages();
+    }
+
+    function showError(msg) {
+      errorMessage.textContent = msg;
+      errorMessage.classList.remove('d-none');
+      successMessage.classList.add('d-none');
+    }
+
+    function showSuccess(msg) {
+      successMessage.textContent = msg;
+      successMessage.classList.remove('d-none');
+      errorMessage.classList.add('d-none');
+    }
+
+    function hideMessages() {
+      errorMessage.classList.add('d-none');
+      successMessage.classList.add('d-none');
+    }
+
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie) {
+        document.cookie.split(';').forEach(cookie => {
+          const trimmed = cookie.trim();
+          if (trimmed.startsWith(name + '=')) {
+            cookieValue = decodeURIComponent(trimmed.slice(name.length + 1));
+          }
+        });
+      }
+      return cookieValue;
+    }
+  </script>
+</body>
+</html>
