@@ -1,6 +1,6 @@
 # 🖼️ Image Caption Generator Web App
 
-This project is a web application built using **Django** that provides automatic **captions for uploaded images**, utilizing **Natural Language Processing (NLP)** and **Computer Vision**.
+This project is a web application built using **Django** that provides automatic **captions for uploaded images**, utilizing **Natural Language Processing (NLP)** and **Deep Learning**.
 
 ---
 
